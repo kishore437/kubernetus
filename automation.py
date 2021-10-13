@@ -6,7 +6,11 @@ try:
 
     print(s/d)
 
-except Exception 
+except Exception:
+
+
+
+except finally:
 
 
 
