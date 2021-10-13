@@ -1,0 +1,190 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Creates and Associates an SSM Command Document for Turbonomic CloudWaatch Config",
+    "Parameters": {
+        "WindowsCWConfigSource": {
+            "Type": "String",
+            "Default": "https://turbo-automation-cw-metrics-wv-stg.s3.amazonaws.com/WindowsTurbo.json",
+            "Description": "Required URL for the Windows cloudwatch metric config file for turbonomic"
+        },
+        "LinuxCWConfigSource": {
+            "Type": "String",
+            "Default": "https://turbo-automation-cw-metrics-wv-stg.s3.amazonaws.com/LinuxTurbo.json",
+            "Description": "Required: URL for the Linux cloudwatch metric config file for turbonomic"
+        },
+        "TagKey": {
+            "Type": "String",
+            "Default": "qualysAgentInstall",
+            "Description": "(Required) Specify the tag key of the EC2 instances to apply this automation."
+        }
+    },
+    "Resources": {
+        "TurbonomicCWConfigDocument": {
+            "Type": "AWS::SSM::Document",
+            "Properties": {
+                "Name": "Turbonomic-CW-Metric-Config",
+                "Content": {
+                    "schemaVersion": "2.2",
+                    "description": "CW config for turbonomic memory/cpu metric",
+                    "parameters": {
+                        "WindowsCWConfigSource": {
+                            "type": "String",
+                            "default": "https://turbo-automation-cw-metrics-wv-stg.s3.amazonaws.com/WindowsTurbo.json",
+                            "description": "Required URL for the Windows cloudwatch metric config file for turbonomic"
+                           },
+                        "LinuxCWConfigSource": {
+                            "type": "String",
+                            "default": "https://turbo-automation-cw-metrics-wv-stg.s3.amazonaws.com/LinuxTurbo.json",
+                            "description": "Required: URL for the Linux cloudwatch metric config file for turbonomic"
+                             }
+                        } ,
+                    "mainSteps": [
+                        {
+                            "name": "Download_Windows_Turbo_CW_Config",
+                            "action": "aws:downloadContent",
+                            "precondition": {
+                                "StringEquals": [
+                                    "platformType",
+                                    "Windows"
+                                ]
+                            },
+                            "inputs": {
+                                "sourceType": "S3",
+                                "sourceInfo": "{\"path\":\"{{ WindowsCWConfigSource }}\"}",
+                                "destinationPath": "C:\\Windows\\Temp\\WindowsTurbo.json"
+                            }
+                        },
+                        {
+                            "name": "Check_Windows_Turbo_CW_Config",
+                            "precondition": {
+                                "StringEquals": [
+                                    "platformType",
+                                    "Windows"
+                                ]
+                            },
+                            "action": "aws:runPowerShellScript",
+                            "inputs": {
+                                "runCommand": [
+                                    " $CWDirectory = 'C:\\Program Files\\Amazon\\AmazonCloudWatchAgent'",
+                                    " if (Test-Path -Path $CWDirectory) {",
+                                    " Write-Host \" Path is present!\"",
+                                    " Copy-Item $CWDirectory -Destination 'C:\\Program Files\\Amazon\\Backup_Pre_Turbo_AmazonCloudWatchAgent' -Force",
+                                    " }",
+                                    " else {",
+                                    " Write-Host 'Cloudwtach Agent does not exist! Please check the service'",
+                                    " Exit",
+                                    " }",
+                                    " Set-Location -Path $CWDirectory",
+                                    " Invoke-Expression '&C:\\\"Program Files\"\\Amazon\\AmazonCloudWatchAgent\\amazon-cloudwatch-agent-ctl.ps1 -m ec2 -a append-config -c file:C:\\Windows\\Temp\\WindowsTurbo.json -s'",
+                                    " if ($lastExitCode -eq 0){",
+                                    " Write-Host 'CloudWatchAgent Configuration Updated Successfully!'",
+                                    " }",
+                                    " else {",
+                                    " Write-Host 'CloudwtachAgent Configuration Update Failed!!'",
+                                    " Exit",
+                                    " }"
+                                 ]
+                            }
+                        },
+                        {
+                            "name": "Download_Linux_Turbo_CW_Config",
+                            "action": "aws:downloadContent",
+                            "precondition": {
+                                "StringEquals": [
+                                    "platformType",
+                                    "Linux"
+                                ]
+                            },
+                            "inputs": {
+                                "sourceType": "S3",
+                                "sourceInfo": "{\"path\":\"{{ LinuxCWConfigSource }}\"}",
+                                "destinationPath": "/tmp/LinuxTurbo.json"
+                            }
+                        },
+                        {
+                            "name": "Backup_Configure_Linux_Cloudwatch_configuration",
+                            "precondition": {
+                                "StringEquals": [
+                                    "platformType",
+                                    "Linux"
+                                ]
+                            },
+                            "action": "aws:runShellScript",
+                            "inputs": {
+                                "runCommand": [
+                                    "FILE=/opt/aws/amazon-cloudwatch-agent/bin",
+                                    "if [ -d \"$FILE\" ];",
+                                    "then",
+                                    "echo \"Cloudwatch config exists on $FILE \";",
+                                    "cp -r -f /opt/aws/amazon-cloudwatch-agent/ /tmp/amazon-cloudwatch-agent_Backup;",
+                                    "cd /opt/aws/amazon-cloudwatch-agent/bin/;",
+                                    "./amazon-cloudwatch-agent-ctl -m ec2 -a append-config -c file:/tmp/LinuxTurbo.json;",
+                                    "else",
+                                    "echo \"Cloudwatch config does not exisit on $FILE \";",
+                                    "echo  \"Cloudwatch Config Update Failure! \"; ",
+                                    "fi"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                "DocumentType": "Command",
+                "TargetType": "/AWS::EC2::Instance"
+            }
+        },
+        "TurbonomicCWConfigAssociation": {
+            "Type": "AWS::SSM::Association",
+            "DependsOn": "TurbonomicCWConfigDocument",
+            "Properties": {
+                "AssociationName": "AMS-Turbo-CW-Metric-Config-Association",
+                "Name": {
+                    "Ref": "TurbonomicCWConfigDocument"
+                },
+                "ScheduleExpression": "rate(2 days)",
+                "Parameters": {
+                    "WindowsCWConfigSource": [
+                        {
+                            "Ref": "WindowsCWConfigSource"
+                        }
+                    ],
+                    "LinuxCWConfigSource": [
+                        {
+                            "Ref": "LinuxCWConfigSource"
+                        }
+                    ]
+                },
+                "Targets": [
+                    {
+                        "Key": "tag-key",
+                        "Values": [
+                            {
+                                "Ref": "TagKey"
+                            }
+                        ]
+                    }
+                ]
+
+        }
+    }
+},
+    "Outputs": {
+        "TurbonomicCWConfigDocumentARN": {
+            "Description": "The ARN of the SSM Command Document deployed for Turbonomic CloudWatch metric",
+            "Value": {
+                "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:document/${TurbonomicCWConfigDocument}"
+            },
+            "Export": {
+                "Name": "TurbonomicCWConfigDocumentARN"
+            }
+        },
+        "TurbonomicCWConfigAssociationARN": {
+            "Description": "The ARN of the State Manager Association of TurbonomicCWConfigDocument",
+            "Value": {
+                "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:association/${TurbonomicCWConfigAssociation.AssociationId}"
+            },
+            "Export": {
+                "Name": "TurbonomicCWConfigAssociationARN"
+            }
+        }
+    }
+}

@@ -1,0 +1,89 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "cloudwatch:DescribeAlarms",
+                "cloudwatch:GetMetricData",
+                "cloudwatch:ListMetrics",
+                "ds:DescribeDirectories",
+                "ec2:DescribeNetworkInterfaceAttribute",
+                "ec2:DescribeNetworkInterfaces",
+                "ec2:DescribeSecurityGroups",
+                "ec2:DescribeSubnets",
+                "ec2:DescribeVpcs",
+                "iam:ListRoles",
+                "kms:ListAliases",
+                "s3:ListBucket"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "AllowAPIActionsForFSXConsole"
+        },
+        {
+            "Action": "fsx:*",
+            "Resource": [
+                "arn:aws:fsx:*:*:backup/*",
+                "arn:aws:fsx:*:*:file-system/*",
+                "arn:aws:fsx:*:*:task/*"
+            ],
+            "Effect": "Allow",
+            "Sid": "AllowFSXFileSystemBackupsAndTasks"
+        },
+        {
+            "Condition": {
+                "StringLike": {
+                    "iam:AWSServiceName": [
+                        "fsx.amazonaws.com"
+                    ]
+                }
+            },
+            "Action": "iam:CreateServiceLinkedRole",
+            "Resource": "arn:aws:iam::*:role/aws-service-role/fsx.amazonaws.com/AWSServiceRoleForAmazonFSx",
+            "Effect": "Allow",
+            "Sid": "AllowFSXForWindowsServiceLinkedRole"
+        },
+        {
+            "Condition": {
+                "StringLike": {
+                    "iam:AWSServiceName": [
+                        "s3.data-source.lustre.fsx.amazonaws.com"
+                    ]
+                }
+            },
+            "Action": "iam:CreateServiceLinkedRole",
+            "Resource": "arn:*:iam::*:role/aws-service-role/s3.data-source.lustre.fsx.amazonaws.com/AWSServiceRoleForFSxS3Access_*",
+            "Effect": "Allow",
+            "Sid": "AllowFSXForLustreServiceLinkedRole"
+        },
+        {
+            "Action": [
+                "iam:AttachRolePolicy",
+                "iam:PutRolePolicy"
+            ],
+            "Resource": "arn:aws:iam::*:role/aws-service-role/s3.data-source.lustre.fsx.amazonaws.com/*",
+            "Effect": "Allow",
+            "Sid": "RequiredForFSXLustreServiceLinkedRoleS3Integration"
+        },
+        {
+            "Action": "iam:PassRole",
+            "Resource": "arn:aws:iam::*:role/aws-service-role/fsx.amazonaws.com/AWSServiceRoleForAmazonFSx",
+            "Effect": "Allow",
+            "Sid": "AllowPassRoleForSLR"
+        },
+        {
+            "Action": "ec2:CreateNetworkInterface",
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "AllowEC2ActionsForCreateBackups"
+        },
+        {
+            "Action": [
+                "elasticfilesystem:CreateMountTarget"
+            ],
+            "Resource": "arn:aws:elasticfilesystem:*:*:file-system/*",
+            "Effect": "Allow",
+            "Sid": "AllowEFSActionsForCreateBackups"
+        }
+    ]
+}
